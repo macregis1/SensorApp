@@ -1,0 +1,143 @@
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, Platform } from 'react-native';
+import * as Sensors from 'expo-sensors';
+import { Brightness } from 'expo';
+import { NativeModules } from 'react-native';
+
+const LightSensor = () => {
+    const [lightLevel, setLightLevel] = useState(0);
+    const [isScreenCovered, setIsScreenCovered] = useState(false);
+    const [brightnessAvailable, setBrightnessAvailable] = useState(true);
+    const ScreenCover = 10; // Adjust this value as needed
+
+    useEffect(() => {
+        const subscription = Sensors.LightSensor.addListener((data) => {
+            setLightLevel(data.illuminance);
+            checkScreenCover(data.illuminance);
+        });
+
+        return () => {
+            subscription.remove();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (brightnessAvailable) {
+            adjustScreenBrightness();
+        }
+    }, [isScreenCovered]);
+
+    useEffect(() => {
+        checkBrightnessAvailability();
+    }, []);
+
+    const checkBrightnessAvailability = async () => {
+        try {
+            if (Platform.OS === 'android' && isSamsungDevice()) {
+                // Check for Samsung specific brightness control API
+                const BrightnessModule = NativeModules.ScreenBrightness;
+                if (BrightnessModule) {
+                    setBrightnessAvailable(true);
+                    return;
+                }
+            }
+            // Use Expo Brightness module for non-Samsung or unsupported devices
+            const brightnessStatus = await Brightness.getSystemBrightnessAsync();
+            if (brightnessStatus !== null) {
+                setBrightnessAvailable(true);
+            } else {
+                setBrightnessAvailable(false);
+            }
+        } catch (error) {
+            console.log("Brightness module is not available on this device.");
+            setBrightnessAvailable(false);
+        }
+    };
+
+    const checkScreenCover = (illuminance) => {
+        if (illuminance <= ScreenCover) {
+            setIsScreenCovered(true);
+        } else {
+            setIsScreenCovered(false);
+        }
+    };
+
+    const adjustScreenBrightness = async () => {
+        try {
+            if (isScreenCovered) {
+                if (Platform.OS === 'android' && isSamsungDevice()) {
+                    // Use Samsung specific brightness control API
+                    const BrightnessModule = NativeModules.ScreenBrightness;
+                    BrightnessModule.setBrightness(0.1);
+                } else {
+                    // Use Expo Brightness module for non-Samsung or unsupported devices
+                    await Brightness.setSystemBrightnessAsync(0.1); // Adjust this value as needed
+                }
+            } else {
+                if (Platform.OS === 'android' && isSamsungDevice()) {
+                    // Use Samsung specific brightness control API
+                    const BrightnessModule = NativeModules.ScreenBrightness;
+                    BrightnessModule.setBrightness(1);
+                } else {
+                    // Use Expo Brightness module for non-Samsung or unsupported devices
+                    await Brightness.setSystemBrightnessAsync(1); // Reset to full brightness
+                }
+            }
+        } catch (error) {
+            console.log("Failed to adjust screen brightness:", error.message);
+        }
+    };
+
+    const isSamsungDevice = () => {
+        // Add logic here to detect Samsung devices based on model or other criteria
+        // For simplicity, return false for now
+        return false;
+    };
+
+    if (!brightnessAvailable) {
+        return (
+            <View style={styles.container}>
+                <Text style={styles.title}>Light Sensor</Text>
+                <Text style={styles.errorMessage}>Screen brightness control is not supported on this device.</Text>
+            </View>
+        );
+    }
+
+    return (
+        <View style={styles.container}>
+            <Text style={styles.title}>Light Sensor</Text>
+            <Text style={styles.lightLevel}>
+                Light Brightness level: {isScreenCovered ? 'Screen covered' : lightLevel.toFixed(2) + ' lux'}
+            </Text>
+            <Text style={styles.threshold}>Screen is covered below {ScreenCover} lux!</Text>
+        </View>
+    );
+};
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    title: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 10,
+    },
+    lightLevel: {
+        fontSize: 16,
+        marginBottom: 5,
+    },
+    threshold: {
+        fontSize: 14,
+        color: 'gray',
+    },
+    errorMessage: {
+        fontSize: 16,
+        color: 'red',
+        textAlign: 'center',
+    },
+});
+
+export default LightSensor;
